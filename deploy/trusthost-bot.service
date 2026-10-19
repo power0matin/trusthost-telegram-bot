@@ -1,0 +1,29 @@
+[Unit]
+Description=TrustHost Telegram management bot
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=trusthost
+Group=trusthost
+WorkingDirectory=/opt/trusthost-bot
+# chmod 600, owned by root:trusthost – holds the API key/secret and the bot token
+EnvironmentFile=/etc/trusthost-bot.env
+ExecStartPre=/opt/trusthost-bot/venv/bin/alembic upgrade head
+ExecStart=/opt/trusthost-bot/venv/bin/python -m app.main
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/trusthost-bot/data
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,40 @@
+# Usage:  cp .env.example .env  →  edit .env  →  docker compose up -d --build
+# Secrets live only in .env (git-ignored). Nothing sensitive is written in this file or the Dockerfile.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trusthost}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-trusthost_bot}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Not published to the host: only the bot container can reach the database.
+
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Built from the same variables as the postgres service so the two can never drift apart.
+      # (If the password contains special characters, URL-encode it in .env.)
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-trusthost}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-trusthost_bot}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  pgdata:
