@@ -21,10 +21,22 @@ ordering, invoices, wallet, payments and support tickets – in **Persian and En
 
 ## Preview
 
-<p align="center">
-  <img src="docs/imgs/preview-0.1.1.png" width="320" alt="TrustHost Telegram bot dashboard showing wallet balance, services, unpaid invoices and the main menu (Persian UI)">
-</p>
-<p align="center"><em>Main dashboard (Persian UI): wallet, services, unpaid invoices and the main menu.</em></p>
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="docs/imgs/preview-en-0.1.1.png" width="280" alt="TrustHost Telegram bot dashboard, English UI">
+    </td>
+    <td align="center">
+      <img src="docs/imgs/preview-fa-0.1.1.png" width="280" alt="TrustHost Telegram bot dashboard, Persian UI">
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><em>English</em></td>
+    <td align="center"><em>فارسی</em></td>
+  </tr>
+</table>
+
+<p align="center"><em>Main dashboard: wallet, services, unpaid invoices and the main menu.</em></p>
 
 ---
 ## 1. Features
