@@ -98,6 +98,27 @@ Handlers contain **no business logic and never call HTTP** – only services do,
 
 ## 4. Deployment
 
+### 4.0 One-line installer (Debian/Ubuntu VPS)
+Installs Docker if needed, clones the repo to `/opt/trusthost-telegram-bot`, asks for your keys (secrets are hidden and never logged), checks Telegram and TrustHost connectivity, and starts the bot.
+```bash
+curl -fsSL https://raw.githubusercontent.com/power0matin/trusthost-telegram-bot/main/install.sh | sudo bash
+```
+Prefer to read it first: [`install.sh`](install.sh). Pin a version with `TH_REF=v0.1.1`.
+
+Non-interactive:
+```bash
+curl -fsSL https://raw.githubusercontent.com/power0matin/trusthost-telegram-bot/main/install.sh | sudo \
+  TRUSTHOST_API_KEY=th_res_xxx TRUSTHOST_API_SECRET=th_sec_xxx \
+  TELEGRAM_BOT_TOKEN=123456:xxx ADMIN_TELEGRAM_IDS=111111111 bash
+```
+| Task | Command |
+|---|---|
+| Update | run the same one-liner again |
+| Change keys | `sudo bash /opt/trusthost-telegram-bot/install.sh --reconfigure` |
+| Stop | `sudo bash /opt/trusthost-telegram-bot/install.sh --uninstall` |
+| Logs | `cd /opt/trusthost-telegram-bot && docker compose logs -f bot` |
+
+The bot needs outbound access to `api.telegram.org` and to the TrustHost API host.
 ### 4.1 Create the TrustHost API key
 Client area → **Account → API Access** (`https://my.trusthost.ir/index.php?m=trusthost_bot`). Only the account owner can
 create keys. You get `th_res_…` (key id) and `th_sec_…` (secret – **shown once**). Optionally restrict the key to the
