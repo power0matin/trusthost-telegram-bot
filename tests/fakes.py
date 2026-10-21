@@ -99,7 +99,8 @@ class FakeTrustHost:
         return httpx.Response(status, json=payload)
 
     POST_ROUTES = {"/orders/validate-promo", "/orders/create", "/invoices/pay-credit", "/services/renew",
-                   "/services/power", "/services/traffic-topup", "/tickets/create", "/tickets/reply"}
+                   "/services/power", "/services/traffic-topup", "/tickets/create", "/tickets/reply",
+                   "/tickets/close", "/wallet/topup", "/services/cancel"}
 
     def count(self, method: str, path: str) -> int:
         return sum(1 for m, p, _ in self.calls if m == method and p == path)
@@ -165,7 +166,34 @@ class FakeTrustHost:
 
     def h_invoices(self, p):  # noqa: ANN001
         rows = [i for i in self.invoices if not p.get("status") or i["status"] == p["status"]]
-        return 200, ok(invoices=rows[:20])
+        limit, page = int(p.get("limit", 20)), int(p.get("page", 1))
+        chunk = rows[(page - 1) * limit: page * limit]
+        return 200, ok(invoices=chunk, pagination={"page": page, "limit": limit, "total": len(rows),
+                                                   "has_more": page * limit < len(rows)})
+
+    def h_invoices_details(self, p):  # noqa: ANN001
+        inv = next((i for i in self.invoices if i["id"] == int(p.get("invoice_id", 0))), None)
+        if inv is None:
+            return 404, err("INVOICE_NOT_FOUND")
+        paid = inv["status"] == "Paid"
+        return 200, ok(invoice={**inv, "datepaid": "2026-09-02 10:00:00" if paid else "", "payment_method": "zarinpal",
+                                "tax": 0, "amount_paid": inv["total"] if paid else 0,
+                                "balance": 0 if paid else inv["total"], "items": [{"description": "VPS"}],
+                                "payments": []})
+
+    def h_wallet_topup(self, p):  # noqa: ANN001
+        amount = p.get("amount")
+        if not isinstance(amount, (int, float)) or amount < 10000:
+            return 200, err("MINIMUM_AMOUNT")
+        iid = self.next_invoice
+        self.next_invoice += 1
+        gw = "usdt" if p.get("gateway") == "usdt" else "zarinpal"
+        self.invoices.insert(0, {"id": iid, "invoicenum": str(iid), "date": "2026-10-06", "duedate": "2026-10-06",
+                                 "subtotal": amount, "credit": 0, "total": amount, "status": "Unpaid",
+                                 "payment_url": f"https://pay.example/view/{iid}",
+                                 "direct_payment_url": f"https://pay.example/{gw}/{iid}"})
+        return 200, ok(invoice_id=iid, amount=amount, payment_method=gw, payment_url=f"https://pay.example/view/{iid}",
+                       direct_payment_url=f"https://pay.example/{gw}/{iid}", message="ok")
 
     def h_invoices_pay_url(self, p):  # noqa: ANN001
         inv = next((i for i in self.invoices if i["id"] == int(p.get("invoice_id", 0))), None)
@@ -190,7 +218,7 @@ class FakeTrustHost:
         return 200, ok(invoice_id=inv["id"], amount_paid=inv["total"], status="Paid", wallet_balance=self.wallet)
 
     def h_wallet(self, p):  # noqa: ANN001
-        return 200, ok(balance=self.wallet, add_funds_url="https://my.trusthost.ir/addfunds")
+        return 200, ok(balance=self.wallet, add_funds_url="https://my.trusthost.co/addfunds")
 
     # -------------------------------------------------------------- services
     def h_services(self, p):  # noqa: ANN001
@@ -201,20 +229,53 @@ class FakeTrustHost:
         if s is None:
             return 404, err("SERVICE_NOT_FOUND")
         if s["id"] == 151:
-            return 409, err("NOT_DUE_YET", next_due_date="2026-11-02", next_invoice_date="2026-10-19")
+            return 409, err("NOT_RENEWABLE")
         if p.get("promocode") and p["promocode"].upper() != "WELCOME10":
             return 422, err("PROMO_NOT_APPLICABLE")
         existing = next((i for i in self.invoices if i["id"] == 8902), None)
         if existing:
-            return 200, ok(service_id=150, invoice_id=8902, total=existing["total"], due_date="2026-10-21", created=False)
+            return 200, ok(service_id=150, invoice_id=8902, product_name="VPS Germany", domain="srv.example.com",
+                           total=existing["total"], payment_method="zarinpal", payment_url=None,
+                           direct_payment_url=None, is_existing=True, status="Unpaid")
         total = 1350000 - (337500 if p.get("promocode") else 0)
         self.invoices.insert(0, {"id": 8902, "invoicenum": "8902", "date": "2026-10-06", "duedate": "2026-10-21",
                                  "subtotal": 1350000, "credit": 0, "total": total, "status": "Unpaid",
                                  "payment_url": None, "direct_payment_url": None})
-        out = ok(service_id=150, invoice_id=8902, total=total, due_date="2026-10-21", created=True)
+        out = ok(service_id=150, invoice_id=8902, product_name="VPS Germany", domain="srv.example.com", total=total,
+                 payment_method="zarinpal", payment_url=None, direct_payment_url=None, is_existing=False,
+                 status="Unpaid")
         if p.get("promocode"):
             out["promo"] = {"code": p["promocode"], "discount": 337500}
         return 200, out
+
+    def h_services_details(self, p):  # noqa: ANN001
+        s = self._service(p)
+        if s is None:
+            return 200, err("SERVICE_NOT_FOUND")
+        return 200, ok(service={**{k: s[k] for k in ("id", "product_name", "servertype", "domain", "status",
+                                                      "billingcycle", "nextduedate")},
+                                "product_id": 12, "group_id": 3, "group_name": "Virtual Servers",
+                                "category": "vps", "location": "iran", "plan_type": "general",
+                                "billing": "recurring", "country": "ir", "city": None, "cpu_type": "shared",
+                                "ip": s["dedicatedip"], "amount": 1350000, "regdate": "2026-01-01",
+                                "days_remaining": 10, "cpu": "4", "ram": "8 GB", "disk": "120 GB", "os": "Ubuntu",
+                                "power_state": self.power_state, "can_reboot": True, "can_power": True,
+                                "has_password": True, "traffic": {"window_days": 30},
+                                "config_options": {"OS": "Ubuntu"}})
+
+    def h_services_credentials(self, p):  # noqa: ANN001
+        s = self._service(p)
+        if s is None:
+            return 200, err("SERVICE_NOT_FOUND")
+        return 200, ok(service_id=s["id"], product_name=s["product_name"], ip=s["dedicatedip"], username="root",
+                       password="S3cr3t-Pa55-from-api", port=22)
+
+    def h_services_cancel(self, p):  # noqa: ANN001
+        s = self._service(p)
+        if s is None:
+            return 200, err("SERVICE_NOT_FOUND")
+        return 200, ok(service_id=s["id"], product_name=s["product_name"],
+                       type=p.get("type", "End of Billing Period"), already_exists=False, message="ok")
 
     def h_services_status(self, p):  # noqa: ANN001
         s = self._service(p)
@@ -323,6 +384,13 @@ class FakeTrustHost:
                                 "status": "Open", "priority": p.get("priority", "Medium"),
                                 "lastreply": "2026-10-06 12:00:00", "date": "2026-10-06 12:00:00"})
         return 200, ok(ticket_id=tid, tid=f"77{tid}")
+
+    def h_tickets_close(self, p):  # noqa: ANN001
+        tk = next((t for t in self.tickets if t["id"] == int(p.get("ticket_id", 0))), None)
+        if tk is None:
+            return 200, err("TICKET_NOT_FOUND")
+        tk["status"] = "Closed"
+        return 200, ok(message="closed")
 
     def h_tickets_reply(self, p):  # noqa: ANN001
         tk = next((t for t in self.tickets if t["id"] == int(p.get("ticket_id", 0))), None)

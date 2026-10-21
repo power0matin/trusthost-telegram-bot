@@ -22,10 +22,18 @@ def tickets_list_kb(lang: str, tickets: list[Ticket], page: int) -> tuple[Inline
     return kb(*rows), items, page, pages
 
 
-def ticket_detail_kb(lang: str, ticket_id: int, page: int) -> InlineKeyboardMarkup:
-    return kb([btn(t(lang, "btn.reply"), Tkt(a="r", id=ticket_id, p=page)),
-               btn(t(lang, "btn.refresh"), Tkt(a="d", id=ticket_id, p=page))],
-              nav_row(lang, Tkt(a="l", p=page)))
+def ticket_detail_kb(lang: str, ticket_id: int, page: int, *, closed: bool = False) -> InlineKeyboardMarkup:
+    rows: list[Row | None] = [[btn(t(lang, "btn.reply"), Tkt(a="r", id=ticket_id, p=page)),
+                               btn(t(lang, "btn.refresh"), Tkt(a="d", id=ticket_id, p=page))]]
+    if not closed:
+        rows.append([btn(t(lang, "btn.close_ticket"), Tkt(a="cx", id=ticket_id, p=page))])
+    rows.append(nav_row(lang, Tkt(a="l", p=page)))
+    return kb(*rows)
+
+
+def ticket_close_kb(lang: str, ticket_id: int, page: int) -> InlineKeyboardMarkup:
+    return kb([btn(t(lang, "btn.confirm_close"), Tkt(a="cc", id=ticket_id, p=page)),
+               btn(t(lang, "btn.no_cancel"), Tkt(a="d", id=ticket_id, p=page))])
 
 
 def departments_kb(lang: str, depts: list[Department]) -> InlineKeyboardMarkup:

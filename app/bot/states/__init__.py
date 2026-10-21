@@ -16,6 +16,10 @@ class TicketStates(StatesGroup):
     reply = State()
 
 
+class WalletStates(StatesGroup):
+    amount = State()
+
+
 class PromoStates(StatesGroup):
     renew = State()
     topup = State()

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from app.core.constants import MAX_PROMO_LEN, MAX_TICKET_MESSAGE, MAX_TICKET_SUBJECT
+from app.core.constants import MAX_PROMO_LEN, MAX_TICKET_MESSAGE, MAX_TICKET_SUBJECT, MIN_TOPUP_AMOUNT
 
 
 class InputError(ValueError):
@@ -59,6 +59,17 @@ def custom_text(value: str) -> str:
     if not v or len(v) > 1000:
         raise InputError("val.custom")
     return v
+
+
+def wallet_amount(value: str) -> int:
+    """Whole Toman, thousands separators tolerated (`500,000`, `500٬000`, spaces)."""
+    v = re.sub(r"[\s,٬،_]", "", value)
+    if not v or not v.isdecimal():
+        raise InputError("val.amount", min=MIN_TOPUP_AMOUNT)
+    n = int(v)
+    if n < MIN_TOPUP_AMOUNT or n > 10**10:
+        raise InputError("val.amount", min=MIN_TOPUP_AMOUNT)
+    return n
 
 
 def ticket_subject(value: str) -> str:

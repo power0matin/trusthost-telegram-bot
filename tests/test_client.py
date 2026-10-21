@@ -14,7 +14,7 @@ from app.trusthost.exceptions import (
 )
 from tests.fakes import API_KEY, API_SECRET, err, ok
 
-BASE = "https://my.trusthost.ir/api/v1"
+BASE = "https://my.trusthost.co/api/v1"
 
 
 def make(handler, **kw):  # type: ignore[no-untyped-def]
@@ -49,7 +49,7 @@ async def test_base_url_path_is_preserved():
 
     c = make(handler)
     await c.get_wallet()
-    assert seen == ["https://my.trusthost.ir/api/v1/wallet"]
+    assert seen == ["https://my.trusthost.co/api/v1/wallet"]
 
 
 # ------------------------------------------------------------------ success flag is authoritative
@@ -107,10 +107,10 @@ async def test_405_is_reported_not_swallowed():
     assert ei.value.status == 405
 
 
-async def test_409_payload_keeps_dates_for_not_due_yet(client, fake):
+async def test_409_not_renewable_is_a_conflict_error(client, fake):
     with pytest.raises(TrustHostConflictError) as ei:
         await client.renew_service(151)
-    assert ei.value.payload["next_invoice_date"] == "2026-10-19"
+    assert ei.value.code == "NOT_RENEWABLE" and ei.value.status == 409
 
 
 async def test_str_of_exception_never_contains_message_or_secrets():

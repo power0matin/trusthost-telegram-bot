@@ -54,7 +54,7 @@ def fake() -> FakeTrustHost:
 
 @pytest_asyncio.fixture
 async def client(fake):
-    c = TrustHostClient("https://my.trusthost.ir/api/v1", API_KEY, API_SECRET, transport=make_transport(fake),
+    c = TrustHostClient("https://my.trusthost.co/api/v1", API_KEY, API_SECRET, transport=make_transport(fake),
                         sleep=_no_sleep, max_requests_per_minute=10_000)
     yield c
     await c.aclose()

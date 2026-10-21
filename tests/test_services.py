@@ -95,12 +95,12 @@ async def test_renew_with_promo(app):
     assert r.promo == {"code": "WELCOME10", "discount": 337500} and r.total == 1012500
 
 
-async def test_renew_not_due_yet_exposes_dates(app):
+async def test_renew_not_renewable_is_audited(app):
     with pytest.raises(TrustHostConflictError) as ei:
         await app.hub.servers.renew(UID, 151)
-    assert ei.value.code == "NOT_DUE_YET" and ei.value.payload["next_invoice_date"] == "2026-10-19"
+    assert ei.value.code == "NOT_RENEWABLE"
     rows = await app.repo.list_audit(UID)
-    assert rows[0].result == "failure" and rows[0].detail == "NOT_DUE_YET"
+    assert rows[0].result == "failure" and rows[0].detail == "NOT_RENEWABLE"
 
 
 async def test_renew_bad_promo_issues_nothing(app):

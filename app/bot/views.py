@@ -16,7 +16,7 @@ from app.services.order_service import OrderDraft
 from app.services.traffic_service import bucket_points, parse_daily
 from app.trusthost.models import (
     Invoice, OrderResult, PayCreditResult, PromoResult, Product, RenewResult, ServerStatus, Service,
-    Ticket, TicketDetail, TopupQuote, TopupResult, TrafficUsage, UsageReport,
+    Ticket, TicketDetail, TopupQuote, TopupResult, TrafficUsage, UsageReport, WalletTopupResult,
 )
 
 
@@ -288,11 +288,27 @@ def renew_result_text(lang: str, r: RenewResult) -> str:
     f = Fmt(lang)
     rows = [f"{'✅' if r.created else 'ℹ️'} <b>{t(lang, 'renew.created' if r.created else 'renew.existing')}</b>", "",
             f"{t(lang, 'lbl.invoice')}: <code>#{r.invoice_id}</code>",
-            f"{t(lang, 'lbl.amount')}: <b>{f.money(r.total)}</b>",
-            f"{t(lang, 'lbl.due')}: {f.date(r.due_date)}"]
+            f"{t(lang, 'lbl.amount')}: <b>{f.money(r.total)}</b>"]
+    legacy_due = r.extra_value("due_date")  # API 1.1.x only; 1.3.x no longer reports a due date here
+    if legacy_due:
+        rows.append(f"{t(lang, 'lbl.due')}: {f.date(legacy_due)}")
     if r.promo and r.promo.get("code"):
         rows.append(f"🏷 {esc(r.promo['code'])}: −{f.money(r.promo.get('discount'))}")
+    if (r.status or "").lower() == "paid":
+        rows.append(f"✅ {label(lang, 'inv', r.status)}")
     return "\n".join(rows)
+
+
+def wallet_topup_confirm_text(lang: str, amount: int) -> str:
+    return t(lang, "wtop.confirm", amount=f"<b>{Fmt(lang).money(amount)}</b>")
+
+
+def wallet_topup_created_text(lang: str, r: WalletTopupResult) -> str:
+    return t(lang, "wtop.created", invoice=f"<code>#{r.invoice_id}</code>", amount=f"<b>{Fmt(lang).money(r.amount)}</b>")
+
+
+def ticket_close_confirm_text(lang: str, tid: str) -> str:
+    return t(lang, "tkt.close_confirm", tid=esc(tid))
 
 
 # ------------------------------------------------------------------ invoices / payment

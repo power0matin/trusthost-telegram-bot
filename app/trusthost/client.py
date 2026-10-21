@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import math
 import time
 from collections import deque
@@ -19,7 +20,8 @@ import httpx
 
 from app.core.cache import TTLCache
 from app.core.constants import (
-    TTL_CATALOG, TTL_DEPARTMENTS, TTL_INVOICES, TTL_SERVICES, TTL_TICKETS, TTL_WALLET,
+    CANCEL_TYPES, GATEWAYS, ORDER_BILLING_CYCLES, TTL_CATALOG, TTL_DEPARTMENTS, TTL_INVOICES, TTL_SERVICES,
+    TTL_TICKETS, TTL_WALLET,
 )
 from app.core.logging import get_logger, log_event
 from app.core.security import register_secret
@@ -28,12 +30,18 @@ from app.trusthost.exceptions import (
     build_api_error,
 )
 from app.trusthost.models import (
-    CreateTicketResult, Department, Group, Invoice, OptionsResponse, OrderResult, PayCreditResult,
-    PayUrl, PowerResult, ProductsResponse, PromoResult, RenewResult, ServerStatus, Service,
-    Ticket, TicketDetail, TopupQuote, TopupResult, TrafficUsage, UsageReport, Wallet,
+    CancelResult, CreateTicketResult, Department, Group, Invoice, InvoiceDetail, InvoicesPage, OptionsResponse,
+    OrderResult, PayCreditResult, PayUrl, PowerResult, ProductsResponse, PromoResult, RenewResult, ServerStatus,
+    Service, ServiceCredentials, ServiceDetail, Ticket, TicketDetail, TopupQuote, TopupResult, TrafficUsage,
+    UsageReport, Wallet, WalletTopupResult,
 )
 
 log = get_logger("trusthost.client")
+
+# Classification filters accepted by GET /catalog/groups, /catalog/products and /services (API 1.3.x).
+# Values are passed through untouched: an unknown value is rejected by the API with 400 INVALID_<FIELD>.
+FILTER_FIELDS = ("category", "location", "plan_type", "billing", "country", "city", "cpu_type")
+MAX_ATTACHMENT_BYTES = 1_000_000  # conservative local cap; the docs only say the web server limits the body
 
 Clock = Callable[[], float]
 Sleep = Callable[[float], Awaitable[None]]
@@ -211,15 +219,22 @@ class TrustHostClient:
                   duration_ms=ms, error_code=error)
 
     # ------------------------------------------------------------------ catalog
-    async def list_groups(self, *, force: bool = False) -> list[Group]:
-        d = await self._get("/catalog/groups", ttl=TTL_CATALOG, force=force)
+    @staticmethod
+    def _filters(filters: dict[str, Any]) -> dict[str, Any]:
+        unknown = set(filters) - set(FILTER_FIELDS)
+        if unknown:
+            raise TypeError(f"Unsupported filter(s): {', '.join(sorted(unknown))}")
+        return {k: v for k, v in filters.items() if v not in (None, "")}
+
+    async def list_groups(self, *, force: bool = False, **filters: Any) -> list[Group]:
+        d = await self._get("/catalog/groups", self._filters(filters), ttl=TTL_CATALOG, force=force)
         return [Group.model_validate(x) for x in d.get("groups", [])]
 
     async def list_products(self, *, group_id: int | None = None, product_id: int | None = None,
                            promocode: str | None = None, billingcycle: str | None = None,
-                           force: bool = False) -> ProductsResponse:
+                           force: bool = False, **filters: Any) -> ProductsResponse:
         params = {"group_id": group_id, "product_id": product_id, "promocode": promocode,
-                  "billingcycle": billingcycle if promocode else None}
+                  "billingcycle": billingcycle if promocode else None, **self._filters(filters)}
         d = await self._get("/catalog/products", params, ttl=0 if promocode else TTL_CATALOG, force=force)
         return ProductsResponse.model_validate(d)
 
@@ -244,6 +259,10 @@ class TrustHostClient:
                            payment_method: str | None = None, configoptions: dict[str, Any] | None = None,
                            customfields: dict[str, Any] | None = None, domain: str | None = None,
                            hostname: str | None = None, rootpw: str | None = None) -> OrderResult:
+        if billingcycle not in ORDER_BILLING_CYCLES:
+            raise ValueError(f"Unsupported billing cycle: {billingcycle!r}")
+        if payment_method is not None and payment_method not in GATEWAYS:
+            raise ValueError(f"Unsupported payment method: {payment_method!r}")
         d = await self._post("/orders/create", {
             "product_id": product_id, "billingcycle": billingcycle, "promocode": promocode or None,
             "payment_method": payment_method, "configoptions": configoptions or None,
@@ -253,11 +272,31 @@ class TrustHostClient:
         return OrderResult.model_validate(d)
 
     # ------------------------------------------------------------------ billing
-    async def list_invoices(self, status: str | None = None, *, force: bool = False) -> list[Invoice]:
-        d = await self._get("/invoices", {"status": status}, ttl=TTL_INVOICES, force=force)
-        return [Invoice.model_validate(x) for x in d.get("invoices", [])]
+    async def list_invoices_page(self, status: str | None = None, *, page: int | None = None,
+                                 limit: int | None = None, force: bool = False) -> InvoicesPage:
+        """One page of invoices, newest first. Documented bounds: limit 1..100 (default 20), page >= 1."""
+        if limit is not None and not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
+        if page is not None and page < 1:
+            raise ValueError("page must be >= 1")
+        d = await self._get("/invoices", {"status": status, "page": page, "limit": limit},
+                            ttl=TTL_INVOICES, force=force)
+        return InvoicesPage.model_validate(d)
+
+    async def list_invoices(self, status: str | None = None, *, page: int | None = None,
+                            limit: int | None = None, force: bool = False) -> list[Invoice]:
+        return (await self.list_invoices_page(status, page=page, limit=limit, force=force)).invoices
+
+    async def get_invoice(self, invoice_id: int) -> InvoiceDetail:
+        d = await self._get("/invoices/details", {"invoice_id": invoice_id}, force=True)
+        invoice = d.get("invoice")
+        if not isinstance(invoice, dict):
+            raise TrustHostProtocolError("Response lacks the documented `invoice` object")
+        return InvoiceDetail.model_validate(invoice)
 
     async def get_pay_url(self, invoice_id: int, gateway: str | None = None) -> PayUrl:
+        if gateway is not None and gateway not in GATEWAYS:
+            raise ValueError(f"Unsupported gateway: {gateway!r}")
         d = await self._get("/invoices/pay-url", {"invoice_id": invoice_id, "gateway": gateway}, force=True)
         return PayUrl.model_validate(d)
 
@@ -272,14 +311,55 @@ class TrustHostClient:
         d = await self._get("/wallet", ttl=TTL_WALLET, force=force)
         return Wallet.model_validate(d)
 
+    async def topup_wallet(self, amount: int, gateway: str | None = None) -> WalletTopupResult:
+        """Issue a wallet top-up invoice (paid online – never from the wallet itself). Not retried."""
+        if gateway is not None and gateway not in GATEWAYS:
+            raise ValueError(f"Unsupported gateway: {gateway!r}")
+        try:
+            d = await self._post("/wallet/topup", {"amount": amount, "gateway": gateway})
+        finally:
+            self.invalidate("/invoices")
+        return WalletTopupResult.model_validate(d)
+
     # ------------------------------------------------------------------ services
-    async def list_services(self, *, force: bool = False) -> list[Service]:
-        d = await self._get("/services", ttl=TTL_SERVICES, force=force)
+    async def list_services(self, *, force: bool = False, status: str | None = None,
+                            **filters: Any) -> list[Service]:
+        params = {"status": status, **self._filters(filters)}
+        d = await self._get("/services", params, ttl=TTL_SERVICES, force=force)
         return [Service.model_validate(x) for x in d.get("services", [])]
 
-    async def renew_service(self, service_id: int, promocode: str | None = None) -> RenewResult:
+    async def get_service(self, service_id: int) -> ServiceDetail:
+        d = await self._get("/services/details", {"service_id": service_id}, force=True)
+        service = d.get("service")
+        if not isinstance(service, dict):
+            raise TrustHostProtocolError("Response lacks the documented `service` object")
+        return ServiceDetail.model_validate(service)
+
+    async def get_credentials(self, service_id: int) -> ServiceCredentials:
+        """Login credentials. Never cached; the password is registered for log redaction."""
+        d = await self._get("/services/credentials", {"service_id": service_id}, force=True)
+        creds = ServiceCredentials.model_validate(d)
+        register_secret(creds.password)
+        return creds
+
+    async def cancel_service(self, service_id: int, cancel_type: str = "End of Billing Period",
+                             reason: str | None = None) -> CancelResult:
+        if cancel_type not in CANCEL_TYPES:
+            raise ValueError(f"Unsupported cancellation type: {cancel_type!r}")
         try:
-            d = await self._post("/services/renew", {"service_id": service_id, "promocode": promocode or None})
+            d = await self._post("/services/cancel", {"service_id": service_id, "type": cancel_type,
+                                                       "reason": reason or None})
+        finally:
+            self.invalidate("/services")
+        return CancelResult.model_validate(d)
+
+    async def renew_service(self, service_id: int, promocode: str | None = None,
+                            gateway: str | None = None) -> RenewResult:
+        if gateway is not None and gateway not in GATEWAYS:
+            raise ValueError(f"Unsupported gateway: {gateway!r}")
+        try:
+            d = await self._post("/services/renew", {"service_id": service_id, "promocode": promocode or None,
+                                                       "gateway": gateway})
         finally:
             self.invalidate("/invoices")
         return RenewResult.model_validate(d)
@@ -326,14 +406,35 @@ class TrustHostClient:
         d = await self._get("/tickets/details", {"ticket_id": ticket_id}, force=True)
         return TicketDetail.model_validate(d)
 
+    @staticmethod
+    def _attachment(attachment: tuple[str, bytes] | None) -> dict[str, str] | None:
+        """(file name, raw bytes) -> the documented inline `{name, content_b64}` object."""
+        if attachment is None:
+            return None
+        name, data = attachment
+        if not name or not data:
+            raise ValueError("Attachment needs a name and content")
+        if len(data) > MAX_ATTACHMENT_BYTES:
+            raise ValueError("Attachment is too large")
+        return {"name": name, "content_b64": base64.b64encode(data).decode("ascii")}
+
     async def create_ticket(self, subject: str, message: str, *, dept_id: int | None = None,
-                            priority: str = "Medium", service_id: int | None = None) -> CreateTicketResult:
+                            priority: str = "Medium", service_id: int | None = None,
+                            attachment: tuple[str, bytes] | None = None) -> CreateTicketResult:
         d = await self._post("/tickets/create", {
             "subject": subject, "message": message, "dept_id": dept_id, "priority": priority,
-            "service_id": service_id or None})
+            "service_id": service_id or None, "attachment": self._attachment(attachment)})
         self.invalidate("/tickets")
         return CreateTicketResult.model_validate(d)
 
-    async def reply_ticket(self, ticket_id: int, message: str) -> None:
-        await self._post("/tickets/reply", {"ticket_id": ticket_id, "message": message})
+    async def reply_ticket(self, ticket_id: int, message: str,
+                           attachment: tuple[str, bytes] | None = None) -> None:
+        await self._post("/tickets/reply", {"ticket_id": ticket_id, "message": message,
+                                            "attachment": self._attachment(attachment)})
         self.invalidate("/tickets")
+
+    async def close_ticket(self, ticket_id: int) -> None:
+        try:
+            await self._post("/tickets/close", {"ticket_id": ticket_id})
+        finally:
+            self.invalidate("/tickets")

@@ -4,7 +4,7 @@ set -Eeuo pipefail
 REPO_URL="${TH_REPO_URL:-https://github.com/power0matin/trusthost-telegram-bot.git}"
 REF="${TH_REF:-main}"
 APP_DIR="${TH_DIR:-/opt/trusthost-telegram-bot}"
-BASE_URL="${TRUSTHOST_BASE_URL:-https://my.trusthost.ir/api/v1}"
+BASE_URL="${TRUSTHOST_BASE_URL:-https://my.trusthost.co/api/v1}"
 LANG_DEFAULT="${DEFAULT_LANGUAGE:-en}"
 LOG="/var/log/trusthost-bot-install.log"
 ENV_FILE="$APP_DIR/.env"

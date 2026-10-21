@@ -38,6 +38,12 @@ class TicketService:
             await self._notifier.sync_ticket(user_id, result.ticket_id)
             return result
 
+    async def close(self, user_id: int, ticket_id: int) -> None:
+        async with self._guard.acquire(f"ticket_close:{ticket_id}"):
+            await self._audit.run(user_id, "CLOSE_TICKET", f"ticket={ticket_id}",
+                                  lambda: self._c.close_ticket(ticket_id))
+            await self._notifier.sync_ticket(user_id, ticket_id)
+
     async def reply(self, user_id: int, ticket_id: int, message: str) -> None:
         message = validators.ticket_message(message)
         async with self._guard.acquire(f"ticket_reply:{ticket_id}"):

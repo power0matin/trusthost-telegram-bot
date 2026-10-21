@@ -5,9 +5,13 @@ from dataclasses import dataclass
 
 from app.core.guard import OperationGuard
 from app.services.audit import AuditService
+from app.services.notification_service import NotificationService
 from app.trusthost.client import TrustHostClient
-from app.trusthost.exceptions import TrustHostNotFoundError
-from app.trusthost.models import Invoice, PayCreditResult, PayUrl, Wallet
+from app.core.constants import MIN_TOPUP_AMOUNT
+from app.services import validators
+from app.trusthost.models import Invoice, InvoiceDetail, PayCreditResult, PayUrl, Wallet, WalletTopupResult
+
+HISTORY_LIMIT = 100  # documented maximum page size of GET /invoices
 
 
 @dataclass(slots=True)
@@ -25,23 +29,30 @@ class PayPreview:
 
 
 class BillingService:
-    def __init__(self, client: TrustHostClient, guard: OperationGuard, audit: AuditService) -> None:
-        self._c, self._guard, self._audit = client, guard, audit
+    def __init__(self, client: TrustHostClient, guard: OperationGuard, audit: AuditService,
+                 notifier: NotificationService) -> None:
+        self._c, self._guard, self._audit, self._notifier = client, guard, audit, notifier
 
     async def wallet(self, *, force: bool = False) -> Wallet:
         return await self._c.get_wallet(force=force)
 
     async def invoices(self, status: str | None = None, *, force: bool = False) -> list[Invoice]:
-        """The API returns only the 20 most recent invoices – there is no deeper history."""
-        return await self._c.list_invoices(status, force=force)
+        """The newest `HISTORY_LIMIT` invoices (API 1.3.x paginates; one page of 100 is the bot's view)."""
+        return await self._c.list_invoices(status, limit=HISTORY_LIMIT, force=force)
 
-    async def invoice(self, invoice_id: int, *, force: bool = True) -> Invoice:
-        """No single-invoice endpoint exists: search the recent list, then the Unpaid list."""
-        for status in (None, "Unpaid"):
-            for inv in await self._c.list_invoices(status, force=force):
-                if inv.id == invoice_id:
-                    return inv
-        raise TrustHostNotFoundError("INVOICE_NOT_FOUND", status=404)
+    async def invoice(self, invoice_id: int) -> InvoiceDetail:
+        """Always live (`GET /invoices/details`); the API answers 404 for unknown / foreign invoices."""
+        return await self._c.get_invoice(invoice_id)
+
+    async def topup(self, user_id: int, amount: int, gateway: str | None = None) -> WalletTopupResult:
+        """Issue a wallet top-up invoice. Paid online only; never retried (not idempotent)."""
+        if amount < MIN_TOPUP_AMOUNT:
+            raise validators.InputError("val.amount", min=MIN_TOPUP_AMOUNT)
+        async with self._guard.acquire(f"wallet_topup:{user_id}"):
+            result = await self._audit.run(user_id, "WALLET_TOPUP", f"amount={amount}",
+                                           lambda: self._c.topup_wallet(amount, gateway))
+            await self._notifier.track_invoice(user_id, result.invoice_id, "Unpaid")
+            return result
 
     async def pay_preview(self, invoice_id: int) -> PayPreview:
         inv, wallet = await asyncio.gather(self.invoice(invoice_id), self._c.get_wallet(force=True))

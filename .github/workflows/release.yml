@@ -1,0 +1,93 @@
+name: Release
+
+# Runs only after the "CI" workflow finished for a push to main. A failed, cancelled or
+# pull-request CI run never reaches the job below. The job is idempotent: re-running it, or
+# pushing more commits without bumping the version, creates nothing new.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write   # create the tag and the GitHub Release – nothing else
+
+concurrency:
+  group: release
+  cancel-in-progress: false   # never abort a half-finished release
+
+jobs:
+  release:
+    name: Tag and publish release
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Check out the commit CI validated
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Read and validate the version
+        id: version
+        run: |
+          set -euo pipefail
+          version="$(python3 - <<'PY'
+          import re
+          m = re.search(r'^__version__\s*=\s*"([^"]+)"', open("app/__init__.py", encoding="utf-8").read(), re.M)
+          print(m.group(1) if m else "")
+          PY
+          )"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error file=app/__init__.py::__version__ must be MAJOR.MINOR.PATCH, got '${version}'"
+            exit 1
+          fi
+          git fetch --tags --force origin
+          # The commit must still be part of main (never release a commit that is not).
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$RELEASE_SHA" origin/main; then
+            echo "::error::$RELEASE_SHA is not an ancestor of origin/main; refusing to release."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Create the annotated tag (if missing)
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "Tag ${TAG} already exists at $(git rev-list -n1 "${TAG}"); not creating it again."
+            exit 0
+          fi
+          latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n1 || true)"
+          if [[ -n "$latest" && "$(printf '%s\n%s\n' "${latest#v}" "$VERSION" | sort -V | tail -n1)" != "$VERSION" ]]; then
+            echo "::error::Version ${VERSION} is lower than the latest tag ${latest}. Bump __version__ in app/__init__.py."
+            exit 1
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            tag -a "${TAG}" -m "TrustHost Telegram Bot ${TAG}" "$RELEASE_SHA"
+          git push origin "refs/tags/${TAG}"
+          echo "Created and pushed ${TAG} at ${RELEASE_SHA}"
+
+      - name: Create the GitHub Release (if missing)
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists; nothing to do."
+            exit 0
+          fi
+          gh release create "${TAG}" --verify-tag --title "TrustHost Telegram Bot ${TAG}" --generate-notes
+          echo "Published release ${TAG}"

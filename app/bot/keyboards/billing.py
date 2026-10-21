@@ -3,7 +3,7 @@ from __future__ import annotations
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardMarkup
 
-from app.bot.callbacks import Inv, Menu, Srv
+from app.bot.callbacks import Inv, Menu, Srv, Wal
 from app.bot.keyboards.common import Row, btn, kb, nav_row, paginate, pager_row, safe_url, url_btn
 from app.core.constants import LIST_PAGE_SIZE
 from app.i18n import t
@@ -81,6 +81,23 @@ def wallet_kb(lang: str, add_funds_url: str | None) -> InlineKeyboardMarkup:
     url = safe_url(add_funds_url)
     if url:
         rows.append([url_btn(t(lang, "btn.add_funds"), url)])
+    rows.append([btn(t(lang, "btn.wallet_topup"), Wal(a="t"))])
     rows.append([btn(t(lang, "inv.filter_unpaid"), Inv(a="l", f="u")), btn(t(lang, "btn.refresh"), Menu(a="wal"))])
     rows.append(nav_row(lang))
+    return kb(*rows)
+
+
+def topup_gateway_kb(lang: str) -> InlineKeyboardMarkup:
+    return kb([btn(t(lang, "btn.pay_card"), Wal(a="go")), btn(t(lang, "btn.pay_usdt"), Wal(a="go", g="u"))],
+              [btn(t(lang, "btn.cancel"), Menu(a="wal"))])
+
+
+def topup_created_kb(lang: str, url: str | None, invoice_id: int | None) -> InlineKeyboardMarkup:
+    rows: list[Row | None] = []
+    safe = safe_url(url)
+    if safe:
+        rows.append([url_btn(t(lang, "btn.open_payment"), safe)])
+    if invoice_id:
+        rows.append([btn(t(lang, "btn.check_status"), Inv(a="d", id=invoice_id))])
+    rows.append(nav_row(lang, Menu(a="wal")))
     return kb(*rows)

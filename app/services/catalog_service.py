@@ -87,12 +87,15 @@ class CatalogService:
         return await self._c.list_groups(force=force)
 
     async def products(self, group_id: int | None = None, *, force: bool = False) -> list[Product]:
-        return (await self._c.list_products(group_id=group_id, force=force)).products
+        """Orderable products. Hourly products (API 1.3.x) are hidden: they bill the wallet every hour and
+        need a dedicated confirmation flow, which the bot does not offer."""
+        items = (await self._c.list_products(group_id=group_id, force=force)).products
+        return [p for p in items if not p.is_hourly]
 
     async def product(self, product_id: int) -> Product:
         items = (await self._c.list_products(product_id=product_id)).products
         for p in items:
-            if p.id == product_id:
+            if p.id == product_id and not p.is_hourly:
                 return p
         raise TrustHostNotFoundError("PRODUCT_NOT_FOUND", status=404)
 
