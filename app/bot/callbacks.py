@@ -4,6 +4,11 @@ from __future__ import annotations
 from aiogram.filters.callback_data import CallbackData
 
 
+class Wal(CallbackData, prefix="w"):
+    a: str  # t top-up prompt · go create top-up invoice
+    g: str = ""  # gateway: "" = card, "u" = USDT
+
+
 class Nav(CallbackData, prefix="n"):
     a: str  # home | noop | cancel
 
@@ -72,7 +77,7 @@ class Inv(CallbackData, prefix="i"):
 
 
 class Tkt(CallbackData, prefix="t"):
-    a: str  # l list · d detail · r reply prompt
+    a: str  # l list · d detail · r reply prompt · cx close confirm · cc close
     id: int = 0
     p: int = 0
 

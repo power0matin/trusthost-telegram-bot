@@ -4,7 +4,9 @@ from aiogram import Bot, Dispatcher, Router
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, BotCommandScopeDefault
 
-from app.bot.handlers import billing, fallback, orders, renewal, servers, settings, start, tickets, topup
+from app.bot.handlers import (
+    billing, fallback, orders, renewal, servers, settings, start, tickets, topup, wallet,
+)
 from app.bot.middlewares.auth import AuthMiddleware
 from app.i18n import t
 from app.services.container import Hub
@@ -25,8 +27,8 @@ def build_dispatcher(hub: Hub) -> Dispatcher:
     dp.message.outer_middleware(auth)
     dp.callback_query.outer_middleware(auth)
     # Order matters: commands (start) before state-bound text handlers, fallback last.
-    dp.include_routers(*(_detach(m.router) for m in (start, servers, topup, renewal, billing, orders, tickets,
-                                                       settings, fallback)))
+    dp.include_routers(*(_detach(m.router) for m in (start, servers, topup, wallet, renewal, billing, orders,
+                                                       tickets, settings, fallback)))
     return dp
 
 

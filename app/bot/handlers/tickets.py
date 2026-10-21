@@ -51,7 +51,9 @@ async def render_detail(event: Event, hub: Hub, lang: str, ticket_id: int, page:
     except TrustHostError as exc:
         await fail(event, lang, exc, Tkt(a="l", p=page))
         return
-    await show(event, views.ticket_detail_text(lang, detail, priority), kbt.ticket_detail_kb(lang, ticket_id, page), new=new)
+    closed = detail.ticket.status.strip().lower() == "closed"
+    await show(event, views.ticket_detail_text(lang, detail, priority),
+               kbt.ticket_detail_kb(lang, ticket_id, page, closed=closed), new=new)
 
 
 @router.callback_query(Tkt.filter(F.a == "d"))
@@ -59,6 +61,33 @@ async def cb_detail(cb: CallbackQuery, callback_data: Tkt, state: FSMContext, hu
     await state.clear()
     await loading(cb, lang)
     await render_detail(cb, hub, lang, callback_data.id, callback_data.p)
+
+
+@router.callback_query(Tkt.filter(F.a == "cx"))
+async def cb_close_ask(cb: CallbackQuery, callback_data: Tkt, state: FSMContext, hub: Hub, lang: str) -> None:
+    await state.clear()
+    await loading(cb, lang)
+    try:
+        detail = await hub.tickets.detail(callback_data.id)
+    except TrustHostError as exc:
+        await fail(cb, lang, exc, Tkt(a="l", p=callback_data.p))
+        return
+    await show(cb, views.ticket_close_confirm_text(lang, detail.ticket.tid),
+               kbt.ticket_close_kb(lang, callback_data.id, callback_data.p))
+
+
+@router.callback_query(Tkt.filter(F.a == "cc"))
+async def cb_close_do(cb: CallbackQuery, callback_data: Tkt, hub: Hub, lang: str) -> None:
+    back = Tkt(a="d", id=callback_data.id, p=callback_data.p)
+    try:
+        await loading(cb, lang, "processing")
+        await hub.tickets.close(cb.from_user.id, callback_data.id)
+    except OperationInProgress:
+        return
+    except TrustHostError as exc:
+        await fail(cb, lang, exc, back, hub=hub)
+        return
+    await show(cb, t(lang, "tkt.close_done"), kb(nav_row(lang, Tkt(a="l", p=callback_data.p))))
 
 
 @router.callback_query(Tkt.filter(F.a == "r"))

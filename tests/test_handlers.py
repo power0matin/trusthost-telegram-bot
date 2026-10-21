@@ -253,10 +253,10 @@ async def test_renewal_flow_creates_invoice_without_duplicates(en):
     assert sum(1 for i in en.fake.invoices if i["id"] == 8902) == 1
 
 
-async def test_renewal_not_due_yet_explains_dates(en):
+async def test_renewal_not_renewable_is_explained(en):
     await en.tg.click("rn:go:151")
     t = en.tg.last_text()
-    assert "cannot be renewed yet" in t and "2026-10-19" in t and "2026-11-02" in t and "NOT_DUE_YET" not in t
+    assert "cannot be renewed" in t and "NOT_RENEWABLE" not in t
 
 
 async def test_renewal_bad_promo_message(fa):
@@ -271,14 +271,14 @@ async def test_invoice_list_filters_and_card_fields(en):
     await en.tg.click(Menu(a="inv"))
     await en.tg.press("Unpaid")
     t = en.tg.last_text()
-    assert "#8841" in t and "1,350,000 Toman" in t and "2026-10-08" in t and "Unpaid" in t and "20 most recent" in t
+    assert "#8841" in t and "1,350,000 Toman" in t and "2026-10-08" in t and "Unpaid" in t and "100 most recent" in t
     assert "8800" not in t
-    assert en.fake.last_body("GET", "/invoices") == {"status": "Unpaid"}
+    assert en.fake.last_body("GET", "/invoices") == {"status": "Unpaid", "limit": "100"}
     await en.tg.click(Inv(a="l", f="a"))
     assert "#8800" in en.tg.last_text()
 
 
-async def test_invoice_pagination_of_the_20_recent(en):
+async def test_invoice_pagination_inside_one_fetched_page(en):
     for i in range(12):
         en.fake.invoices.append({**en.fake.invoices[1], "id": 7000 + i, "invoicenum": str(7000 + i)})
     await en.tg.click(Inv(a="l", f="a"))
@@ -312,7 +312,7 @@ async def test_insufficient_wallet_blocks_confirm_and_offers_add_funds(en):
     t = en.tg.last_text()
     assert "short by" in t and "1,349,000 Toman" in t
     assert not any("Yes, pay now" in b.text for b in en.tg.buttons())
-    assert en.tg.find_button("Add Funds").url == "https://my.trusthost.ir/addfunds"
+    assert en.tg.find_button("Add Funds").url == "https://my.trusthost.co/addfunds"
     assert en.fake.count("POST", "/invoices/pay-credit") == 0
 
 
@@ -345,8 +345,8 @@ async def test_pay_url_for_paid_invoice(en):
 
 async def test_wallet_screen_uses_official_add_funds_url(en):
     await en.tg.click(Menu(a="wal"))
-    assert "2,000,000 Toman" in en.tg.last_text() and "does not allow deposits" in en.tg.last_text()
-    assert en.tg.find_button("Add Funds").url == "https://my.trusthost.ir/addfunds"
+    assert "2,000,000 Toman" in en.tg.last_text() and "Top up wallet" in en.tg.last_text()
+    assert en.tg.find_button("Add Funds").url == "https://my.trusthost.co/addfunds"
 
 
 # ====================================================================== ordering
@@ -563,7 +563,7 @@ async def test_health_screen_never_shows_credentials(en):
     await en.tg.send("/health")
     t = en.tg.last_text()
     assert "Telegram: ✅ OK" in t and "Database: ✅ OK" in t and "TrustHost API: ✅ OK" in t and "Response time" in t
-    assert "my.trusthost.ir" in t and "th_res_" not in t and "th_sec_" not in t
+    assert "my.trusthost.co" in t and "th_res_" not in t and "th_sec_" not in t
     en.fake.overrides["GET /wallet"] = (401, err("UNAUTHORIZED"))
     await en.tg.send("/health")
     assert "TrustHost API: ❌" in en.tg.last_text() and "UNAUTHORIZED" in en.tg.last_text()

@@ -6,6 +6,13 @@ BILLING_CYCLES = ("monthly", "quarterly", "semiannually", "annually")
 CYCLE_CODES = {"m": "monthly", "q": "quarterly", "s": "semiannually", "a": "annually"}
 CYCLE_TO_CODE = {v: k for k, v in CYCLE_CODES.items()}
 
+# Cycles accepted by POST /orders/create in API 1.3.x (the bot's cycle picker only offers BILLING_CYCLES;
+# hourly products are not orderable from the bot).
+ORDER_BILLING_CYCLES = BILLING_CYCLES + ("biennially", "triennially", "hourly")
+GATEWAYS = ("usdt",)  # online gateway override; omit for card payment (Zarinpal)
+CANCEL_TYPES = ("End of Billing Period", "Immediate")
+MIN_TOPUP_AMOUNT = 10_000  # Toman, per POST /wallet/topup
+
 POWER_ACTIONS = ("on", "off", "shutdown", "reboot")
 POWER_CONFIRM_ACTIONS = ("off", "shutdown", "reboot")
 POWER_EXPECTED_STATE = {"on": "POWERED_ON", "off": "POWERED_OFF", "shutdown": "POWERED_OFF"}

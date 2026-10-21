@@ -52,7 +52,7 @@ def build_hub(settings: Settings, client: TrustHostClient, repo: Repository, bot
         account=AccountService(client),
         catalog=CatalogService(client),
         orders=OrderService(client, guard, audit, notifier),
-        billing=BillingService(client, guard, audit),
+        billing=BillingService(client, guard, audit, notifier),
         servers=ServerService(client, guard, audit, notifier, poll_delays=poll_delays),
         traffic=TrafficService(client, guard, audit, notifier),
         tickets=TicketService(client, guard, audit, notifier),

@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    trusthost_base_url: str = "https://my.trusthost.ir/api/v1"
+    trusthost_base_url: str = "https://my.trusthost.co/api/v1"
     trusthost_api_key: SecretStr
     trusthost_api_secret: SecretStr
     telegram_bot_token: SecretStr

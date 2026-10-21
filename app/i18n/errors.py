@@ -22,6 +22,8 @@ def translate_trusthost_error(code: str, lang: str, **ctx: Any) -> str:
     for date_key in ("next_due_date", "next_invoice_date"):
         if ctx.get(date_key):
             safe[date_key] = f.date(ctx[date_key])
+    if not has_key(lang, key) and code.startswith("INVALID_"):
+        key = "err.INVALID_FILTER"  # INVALID_<FIELD> for an unknown classification filter value
     if has_key(lang, key):
         # missing placeholders fall back to a dash instead of leaking "{name}"
         for needed in ("next_due_date", "next_invoice_date", "seconds", "status"):

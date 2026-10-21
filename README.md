@@ -18,7 +18,7 @@
 
 The **TrustHost client area, redesigned as a Telegram application**: dashboard, VPS control, traffic, renewals,
 ordering, invoices, wallet, payments and support tickets – in **Persian and English** – built strictly on the official
-**TrustHost Customer API 1.1.0**.
+**TrustHost Customer API 1.3.3**.
 
 * Python 3.12 · aiogram 3 · httpx · Pydantic v2 · SQLAlchemy 2 (async) · Alembic · APScheduler
 * Owner/admin-only, long polling (no inbound ports), secrets only in environment variables
@@ -60,11 +60,11 @@ ordering, invoices, wallet, payments and support tickets – in **Persian and En
 | Traffic | Used / quota / remaining / %, download vs upload, period, data status, last sync (only inbound counts toward the quota) |
 | Usage | CPU, RAM, disk, uptime, period traffic and a text bar chart of daily traffic; 7 / 14 / 30 / 60 / 90 days |
 | Traffic top-up | Package sizes **come from the API quote** (nothing hard-coded), promo preview, confirm, invoice |
-| Renewal | Optional promo → confirm → issue-or-reuse the renewal invoice (the API prevents duplicates); friendly `NOT_DUE_YET` with the exact dates |
+| Renewal | Optional promo → confirm → issue-or-reuse the renewal invoice (the API prevents duplicates); promo failures and `NOT_RENEWABLE` / `SERVICE_NOT_ACTIVE` are explained |
 | Order a service | Groups → products → billing cycle → **options and custom fields rendered dynamically from the API** → optional hostname/domain/root password/gateway/promo → review → confirm → invoice |
-| Invoices & payment | Filters (Unpaid / Paid / Cancelled / Refunded / All), wallet payment with confirmation and balance maths, online payment and USDT links as URL buttons |
-| Wallet | Balance + the official **Add Funds** URL (the API has no deposit endpoint) |
-| Support | Ticket list/detail/reply, new-ticket wizard (department → subject → message → priority → optional related service → review) |
+| Invoices & payment | Filters (Unpaid / Paid / Cancelled / Refunded / All; up to the 100 most recent), live single-invoice lookup, wallet payment with confirmation and balance maths, online payment and USDT links as URL buttons |
+| Wallet | Balance, **top-up invoice** (card or USDT, minimum 10,000 Toman; `POST /wallet/topup`) and the official **Add Funds** URL |
+| Support | Ticket list/detail/reply/**close** (with confirmation), new-ticket wizard (department → subject → message → priority → optional related service → review) |
 | Notifications | Polling-based (the API has no webhooks): ticket replies, service status changes, payment/order status – de-duplicated and persisted |
 | Settings | Language, notification preferences, account/API status, "unavailable features" |
 | Diagnostics | `/health` – Telegram, database, TrustHost API, response time (never shows credentials) |
@@ -150,7 +150,7 @@ curl -fsSL https://raw.githubusercontent.com/power0matin/trusthost-telegram-bot/
 
 The bot needs outbound access to `api.telegram.org` and to the TrustHost API host.
 ### 4.1 Create the TrustHost API key
-Client area → **Account → API Access** (`https://my.trusthost.ir/index.php?m=trusthost_bot`). Only the account owner can
+Client area → **Account → API Access** (`https://my.trusthost.co/index.php?m=trusthost_bot`). Only the account owner can
 create keys. You get `th_res_…` (key id) and `th_sec_…` (secret – **shown once**). Optionally restrict the key to the
 bot server's public IP (*Manage IP*); an IP-restricted key has no request limit. You can hold up to 3 keys.
 
@@ -165,7 +165,7 @@ cp .env.example .env && chmod 600 .env
 ```
 | Variable | Meaning |
 |---|---|
-| `TRUSTHOST_BASE_URL` | default `https://my.trusthost.ir/api/v1` |
+| `TRUSTHOST_BASE_URL` | default `https://my.trusthost.co/api/v1` (the former `https://my.trusthost.ir/api/v1` still answers, so existing `.env` files keep working) |
 | `TRUSTHOST_API_KEY` / `TRUSTHOST_API_SECRET` | the API key pair |
 | `TELEGRAM_BOT_TOKEN` | BotFather token |
 | `ADMIN_TELEGRAM_IDS` | comma-separated Telegram ids allowed to use the bot |
@@ -208,7 +208,7 @@ alembic check             # verifies models and migrations agree
 ## 5. Development & tests
 ```bash
 python -m venv venv && . venv/bin/activate && pip install -r requirements-dev.txt
-pytest -q          # 262 tests, ~10 s, no network needed
+pytest -q          # 330 tests, ~11 s, no network needed
 ```
 Tests use a faithful fake TrustHost server (`httpx.MockTransport`, built from the documented routes, status codes and
 sample payloads; it also checks the auth headers) and a fake Telegram transport that drives real updates through the
@@ -216,10 +216,11 @@ real dispatcher – so full conversations (order wizard, power confirmation, pay
 
 ## 6. Limits that come from the TrustHost API (not the bot)
 Honest limits – the bot says *"This feature is not available through the TrustHost Customer API"* instead of faking them:
-no wallet-deposit endpoint (use the Add Funds URL), no OS reinstall, password/IP change, resize, DNS, profile editing
-or cancellation; no single-invoice endpoint (the bot finds the invoice in the list); `/invoices` and `/tickets` return
-**only the 20 most recent** records, so there is no deeper history or server-side pagination (the bot paginates those 20
-locally); no webhooks, so notifications are polling-based; traffic data is collected periodically
+no OS reinstall, password/IP change, resize, DNS or profile editing; `/tickets` returns **only the 20 most recent**
+tickets; `/invoices` is paginated by the API (the bot reads one page of up to 100 and paginates it locally); **hourly
+products are hidden** from the order wizard (they bill the wallet every hour and need their own confirmation flow);
+service login credentials and service cancellation exist in the API client but are deliberately **not exposed** in
+Telegram (sensitive / destructive – see `docs/ENDPOINT_MATRIX.md`); no webhooks, so notifications are polling-based; traffic data is collected periodically
 (`last_synced_at` is shown); Persian error text from TrustHost is used only as a fallback for unknown error codes.
 
 ## 7. Documentation gaps and how they are handled
@@ -238,7 +239,15 @@ The spec leaves a few nested shapes open. The bot never invents values; it parse
 If TrustHost publishes these shapes, tighten the parsers in `services/catalog_service.py`, `services/traffic_service.py`
 and `trusthost/models.py`.
 
-## 8. Operational notes
+## 8. CI and releases
+* **CI** (`.github/workflows/ci.yml`) runs on every pull request to `main` and on pushes to `main`: compile check, the full
+  pytest suite and a Docker image build. It needs no secrets and has read-only permissions.
+* **Release** (`.github/workflows/release.yml`) runs only after CI succeeded for a push to `main`. The bot's release version is
+  `app.__version__` (`app/__init__.py`, semantic versioning, independent of the TrustHost API version). If the tag
+  `v<version>` does not exist yet it must be higher than every existing tag; the workflow then creates the annotated tag and a GitHub
+  Release with generated notes. Unchanged versions, failed CI and retries never create duplicates. See `docs/RELEASING.md`.
+
+## 9. Operational notes
 * FSM state is in memory: a restart discards in-progress wizards (the user sees "session expired" and starts again) and,
   as a benefit, drops any pending root password. Use a Redis FSM storage if you need wizards to survive restarts.
 * The bot is single-instance (long polling). Do not run two copies with the same token.
