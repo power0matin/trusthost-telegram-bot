@@ -1,4 +1,14 @@
-# TrustHost Telegram Management Bot
+<h1 align="center">TrustHost Telegram Management Bot</h1>
+
+<!-- repo-badges:start -->
+<p align="center">
+  <a href="https://hits.sh/github.com/power0matin/trusthost-telegram-bot/"><img src="https://hits.sh/github.com/power0matin/trusthost-telegram-bot.svg?style=flat-square&amp;label=Views&amp;labelColor=18181B&amp;color=0EA5E9&amp;logo=github" alt="Repository Views"/></a>
+  <a href="https://github.com/power0matin/trusthost-telegram-bot/stargazers"><img src="https://img.shields.io/github/stars/power0matin/trusthost-telegram-bot?style=flat-square&amp;label=Stars&amp;labelColor=18181B&amp;color=F59E0B&amp;logo=github&amp;logoColor=white" alt="GitHub Stars"/></a>
+  <a href="https://github.com/power0matin/trusthost-telegram-bot/forks"><img src="https://img.shields.io/github/forks/power0matin/trusthost-telegram-bot?style=flat-square&amp;label=Forks&amp;labelColor=18181B&amp;color=6366F1&amp;logo=github&amp;logoColor=white" alt="GitHub Forks"/></a>
+  <a href="https://github.com/power0matin/trusthost-telegram-bot/issues"><img src="https://img.shields.io/github/issues/power0matin/trusthost-telegram-bot?style=flat-square&amp;label=Issues&amp;labelColor=18181B&amp;color=22C55E&amp;logo=github&amp;logoColor=white" alt="GitHub Issues"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/power0matin/trusthost-telegram-bot?style=flat-square&amp;label=License&amp;labelColor=18181B&amp;color=EF4444&amp;logo=github&amp;logoColor=white" alt="GitHub License"/></a>
+</p>
+<!-- repo-badges:end -->
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-blue.svg)
@@ -234,3 +244,33 @@ and `trusthost/models.py`.
 * The bot is single-instance (long polling). Do not run two copies with the same token.
 * Dates are shown as `YYYY-MM-DD HH:MM` in server time (Asia/Tehran), with Persian digits in the Persian UI; money is
   Toman with a thousands separator (`۱٬۳۵۰٬۰۰۰ تومان` / `1,350,000 Toman`).
+
+## Contact
+
+**Matin Shahabadi**
+
+- Website: [matinshahabadi.ir](https://matinshahabadi.ir)
+- Email: [me@matinshahabadi.ir](mailto:me@matinshahabadi.ir)
+- GitHub: [power0matin](https://github.com/power0matin)
+- LinkedIn: [matin-shahabadi](https://www.linkedin.com/in/matin-shahabadi)
+
+<p align="center">
+  <b>If this helped you, consider giving it a star!</b><br>
+  <sub>Your support keeps the project alive and helps others find it.</sub>
+</p>
+
+<!-- Copy-paste in your Readme.md file -->
+<p align="center">
+  <a href="https://next.ossinsight.io/widgets/official/analyze-repo-stars-history?repo_id=1426248419" target="_blank" style="display: block" align="center">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://next.ossinsight.io/widgets/official/analyze-repo-stars-history/thumbnail.png?repo_id=1426248419&amp;image_size=auto&amp;color_scheme=dark" width="721" height="auto">
+      <img alt="Star History of power0matin/trusthost-telegram-bot" src="https://next.ossinsight.io/widgets/official/analyze-repo-stars-history/thumbnail.png?repo_id=1426248419&amp;image_size=auto&amp;color_scheme=light" width="721" height="auto">
+    </picture>
+  </a>
+</p>
+
+<!-- Made with [OSS Insight](https://ossinsight.io/) -->
+
+<p align="center">
+  Created by <a href="https://github.com/power0matin">power0matin</a>
+</p>
